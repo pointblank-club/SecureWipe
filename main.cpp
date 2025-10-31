@@ -9,6 +9,7 @@
 #include <map>
 #include <array>
 #include <unistd.h>
+#include <cstring>
 
 struct Disk {
     std::string name;
@@ -18,6 +19,14 @@ struct Disk {
     std::string size;
     std::string rota;
 };
+
+// Color pairs
+#define COLOR_TITLE 1
+#define COLOR_SUCCESS 2
+#define COLOR_WARNING 3
+#define COLOR_ERROR 4
+#define COLOR_INFO 5
+#define COLOR_HIGHLIGHT 6
 
 std::string run_cmd(const std::string &cmd) {
     std::array<char, 1024> buf{};
@@ -69,7 +78,6 @@ std::vector<Disk> list_disks() {
             if (v.size() && v.front() == '"' && v.back() == '"') v = v.substr(1, v.size()-2);
             kv[k] = v;
         }
-        // Also Detect Loop Disks
         if (kv["TYPE"] != "disk" && kv["TYPE"] != "loop") continue;
         Disk d;
         d.name = kv["NAME"];
@@ -96,42 +104,188 @@ std::vector<std::string> list_android_devices() {
     return devs;
 }
 
+void draw_box_with_title(WINDOW *win, const std::string &title, int color_pair = COLOR_TITLE) {
+    box(win, 0, 0);
+    if (!title.empty()) {
+        wattron(win, COLOR_PAIR(color_pair) | A_BOLD);
+        mvwprintw(win, 0, 3, " %s ", title.c_str());
+        wattroff(win, COLOR_PAIR(color_pair) | A_BOLD);
+    }
+}
+
+void draw_header(WINDOW *win) {
+    werase(win);
+    wattron(win, COLOR_PAIR(COLOR_TITLE) | A_BOLD);
+    int width = getmaxx(win);
+    std::string title = "VOID - SECURE WIPE UTILITY";
+    int x = (width - title.length()) / 2;
+    mvwprintw(win, 1, x, "%s", title.c_str());
+    wattroff(win, COLOR_PAIR(COLOR_TITLE) | A_BOLD);
+    
+    std::string subtitle = "Secure Device Erasure & Attestation";
+    x = (width - subtitle.length()) / 2;
+    mvwprintw(win, 2, x, "%s", subtitle.c_str());
+    
+    wrefresh(win);
+}
+
+void draw_footer(WINDOW *win, const std::string &text) {
+    werase(win);
+    mvwprintw(win, 0, 2, "%s", text.c_str());
+    wrefresh(win);
+}
+
 void draw_menu(WINDOW *win, int highlight, const std::vector<std::string> &choices) {
     werase(win);
-    box(win, 0, 0);
-    mvwprintw(win, 0, 2, " Select Mode ");
+    draw_box_with_title(win, "Select Wipe Mode", COLOR_TITLE);
+    
+    int start_y = 3;
     for (size_t i = 0; i < choices.size(); i++) {
-        if ((int)i == highlight)
-            wattron(win, A_REVERSE | COLOR_PAIR(1));
-        mvwprintw(win, (int)i + 2, 3, "%s", choices[i].c_str());
-        if ((int)i == highlight)
-            wattroff(win, A_REVERSE | COLOR_PAIR(1));
+        if ((int)i == highlight) {
+            wattron(win, COLOR_PAIR(COLOR_HIGHLIGHT) | A_REVERSE | A_BOLD);
+            mvwprintw(win, start_y + (int)i * 2, 4, "> %s", choices[i].c_str());
+            wattroff(win, COLOR_PAIR(COLOR_HIGHLIGHT) | A_REVERSE | A_BOLD);
+        } else {
+            mvwprintw(win, start_y + (int)i * 2, 4, "  %s", choices[i].c_str());
+        }
     }
+    
+    mvwprintw(win, getmaxy(win) - 2, 2, "UP/DOWN: Navigate  ENTER: Select  Q: Quit");
+    
     wrefresh(win);
 }
 
 void draw_disks(WINDOW *win, int highlight, const std::vector<Disk> &disks) {
     werase(win);
-    box(win, 0, 0);
-    mvwprintw(win, 0, 2, " Local Disks ");
-    for (size_t i = 0; i < disks.size(); i++) {
-        if ((int)i == highlight)
-            wattron(win, A_REVERSE | COLOR_PAIR(1));
-        mvwprintw(win, (int)i + 2, 2, "%s (%s)", disks[i].node.c_str(), disks[i].model.c_str());
-        if ((int)i == highlight)
-            wattroff(win, A_REVERSE | COLOR_PAIR(1));
+    draw_box_with_title(win, "Available Disks", COLOR_TITLE);
+    
+    int start_y = 3;
+    if (disks.empty()) {
+        wattron(win, COLOR_PAIR(COLOR_WARNING));
+        mvwprintw(win, start_y, 4, "No disks detected");
+        wattroff(win, COLOR_PAIR(COLOR_WARNING));
+    } else {
+        for (size_t i = 0; i < disks.size(); i++) {
+            if ((int)i == highlight) {
+                wattron(win, COLOR_PAIR(COLOR_HIGHLIGHT) | A_REVERSE | A_BOLD);
+            }
+            
+            std::string disk_type = (disks[i].rota == "1") ? "[HDD]" : "[SSD]";
+            if (disks[i].node.find("nvme") != std::string::npos) disk_type = "[NVMe]";
+            if (disks[i].node.find("loop") != std::string::npos) disk_type = "[Loop]";
+            
+            mvwprintw(win, start_y + (int)i * 3, 4, "> %s %s", disks[i].node.c_str(), disk_type.c_str());
+            mvwprintw(win, start_y + (int)i * 3 + 1, 6, "Model: %s | Size: %s", 
+                     disks[i].model.empty() ? "Unknown" : disks[i].model.c_str(), 
+                     disks[i].size.c_str());
+            
+            if ((int)i == highlight) {
+                wattroff(win, COLOR_PAIR(COLOR_HIGHLIGHT) | A_REVERSE | A_BOLD);
+            }
+        }
     }
-    if (disks.empty()) mvwprintw(win, 2, 2, "No disks found.");
+    
+    mvwprintw(win, getmaxy(win) - 2, 2, "UP/DOWN: Navigate  ENTER: Wipe  R: Refresh  B: Back");
+    
     wrefresh(win);
 }
 
-void draw_android(WINDOW *win, const std::vector<std::string> &devs) {
+void draw_progress(WINDOW *win, const std::string &title, const std::string &message, int percent = -1) {
     werase(win);
-    box(win, 0, 0);
-    mvwprintw(win, 0, 2, " Android / USB Devices ");
-    int y = 2;
-    if (devs.empty()) mvwprintw(win, y++, 2, "No Android devices found.");
-    for (auto &d : devs) mvwprintw(win, y++, 2, "%s", d.c_str());
+    draw_box_with_title(win, title, COLOR_TITLE);
+    
+    int center_y = getmaxy(win) / 2;
+    int center_x = (getmaxx(win) - message.length()) / 2;
+    
+    wattron(win, A_BOLD);
+    mvwprintw(win, center_y, center_x, "%s", message.c_str());
+    wattroff(win, A_BOLD);
+    
+    if (percent >= 0) {
+        int bar_width = 40;
+        int filled = (bar_width * percent) / 100;
+        int bar_x = (getmaxx(win) - bar_width - 2) / 2;
+        
+        mvwprintw(win, center_y + 2, bar_x, "[");
+        for (int i = 0; i < filled; i++) {
+            mvwprintw(win, center_y + 2, bar_x + 1 + i, "=");
+        }
+        for (int i = filled; i < bar_width; i++) {
+            mvwprintw(win, center_y + 2, bar_x + 1 + i, "-");
+        }
+        mvwprintw(win, center_y + 2, bar_x + bar_width + 1, "]");
+        mvwprintw(win, center_y + 3, (getmaxx(win) - 4) / 2, "%d%%", percent);
+    }
+    
+    wrefresh(win);
+}
+
+void show_result(WINDOW *win, bool success, const std::string &title, const std::string &message, const std::string &details = "") {
+    werase(win);
+    draw_box_with_title(win, title, success ? COLOR_SUCCESS : COLOR_ERROR);
+    
+    int y = 3;
+    int color = success ? COLOR_SUCCESS : COLOR_ERROR;
+    
+    wattron(win, COLOR_PAIR(color) | A_BOLD);
+    std::string status = success ? "[SUCCESS]" : "[FAILED]";
+    int x = (getmaxx(win) - status.length()) / 2;
+    mvwprintw(win, y, x, "%s", status.c_str());
+    wattroff(win, COLOR_PAIR(color) | A_BOLD);
+    
+    y += 2;
+    x = (getmaxx(win) - message.length()) / 2;
+    mvwprintw(win, y, x, "%s", message.c_str());
+    
+    if (!details.empty()) {
+        y += 2;
+        mvwprintw(win, y, 4, "Details:");
+        y++;
+        std::istringstream iss(details);
+        std::string line;
+        while (std::getline(iss, line) && y < getmaxy(win) - 4) {
+            mvwprintw(win, y++, 6, "%s", line.c_str());
+        }
+    }
+    
+    mvwprintw(win, getmaxy(win) - 2, 2, "Press any key to continue...");
+    
+    wrefresh(win);
+}
+
+void draw_android(WINDOW *win, const std::string &mode, const std::string &device_info = "") {
+    werase(win);
+    draw_box_with_title(win, "Android Device Wipe", COLOR_TITLE);
+    
+    int y = 3;
+    mvwprintw(win, y++, 4, "Detection Mode:");
+    wattron(win, COLOR_PAIR(COLOR_HIGHLIGHT) | A_BOLD);
+    mvwprintw(win, y++, 6, "> %s", mode.c_str());
+    wattroff(win, COLOR_PAIR(COLOR_HIGHLIGHT) | A_BOLD);
+    
+    y++;
+    if (!device_info.empty()) {
+        wattron(win, COLOR_PAIR(COLOR_SUCCESS));
+        mvwprintw(win, y++, 4, "Detected Device:");
+        wattroff(win, COLOR_PAIR(COLOR_SUCCESS));
+        mvwprintw(win, y++, 6, "%s", device_info.c_str());
+    } else {
+        wattron(win, COLOR_PAIR(COLOR_WARNING));
+        mvwprintw(win, y++, 4, "No device detected");
+        wattroff(win, COLOR_PAIR(COLOR_WARNING));
+    }
+    
+    y += 2;
+    mvwprintw(win, y++, 4, "Options:");
+    mvwprintw(win, y++, 6, "[1] Switch to fastboot mode");
+    mvwprintw(win, y++, 6, "[2] Switch to ADB mode");
+    mvwprintw(win, y++, 6, "[R] Rescan devices");
+    if (!device_info.empty()) {
+        mvwprintw(win, y++, 6, "[ENTER] Wipe device");
+    }
+    
+    mvwprintw(win, getmaxy(win) - 2, 2, "B: Back  Q: Quit");
+    
     wrefresh(win);
 }
 
@@ -139,13 +293,15 @@ int main() {
     initscr();
     start_color();
     use_default_colors();
-    init_pair(1, COLOR_RED, -1);    
-    init_pair(2, COLOR_GREEN, -1);  
-    init_pair(3, COLOR_CYAN, -1);   
-
-    start_color();
-    use_default_colors();
-    init_pair(1, COLOR_GREEN, -1);
+    
+    // Initialize color pairs - using white for better readability
+    init_pair(COLOR_TITLE, COLOR_WHITE, -1);
+    init_pair(COLOR_SUCCESS, COLOR_GREEN, -1);
+    init_pair(COLOR_WARNING, COLOR_YELLOW, -1);
+    init_pair(COLOR_ERROR, COLOR_RED, -1);
+    init_pair(COLOR_INFO, COLOR_WHITE, -1);
+    init_pair(COLOR_HIGHLIGHT, COLOR_BLACK, COLOR_GREEN);
+    
     noecho();
     cbreak();
     curs_set(0);
@@ -153,16 +309,27 @@ int main() {
     int h, w;
     getmaxyx(stdscr, h, w);
 
-    WINDOW *mainwin = newwin(h - 2, w - 2, 1, 1);
+    // Create windows
+    WINDOW *header = newwin(4, w, 0, 0);
+    WINDOW *mainwin = newwin(h - 6, w, 4, 0);
+    WINDOW *footer = newwin(2, w, h - 2, 0);
+    
     keypad(mainwin, TRUE);
+    
+    draw_header(header);
 
-    std::vector<std::string> menu = {"Local Disks (NVMe, SSD, HDD)", "Android / USB Devices"};
+    std::vector<std::string> menu = {
+        "Local Disks (NVMe, SSD, HDD)",
+        "Android / USB Devices"
+    };
     int menu_choice = 0;
     int stage = 0;
 
     while (true) {
         if (stage == 0) {
             draw_menu(mainwin, menu_choice, menu);
+            draw_footer(footer, "Use arrow keys to navigate, press ENTER to select, Q to quit");
+            
             int ch = wgetch(mainwin);
             if (ch == KEY_UP && menu_choice > 0) menu_choice--;
             else if (ch == KEY_DOWN && menu_choice < (int)menu.size() - 1) menu_choice++;
@@ -171,267 +338,219 @@ int main() {
             } else if (ch == 'q' || ch == 'Q') break;
         }
 
-else if (stage == 1) {  // local disks
-    auto disks = list_disks();
-    int idx = 0;
-    static int loopIndex = 0;  
-    keypad(mainwin, TRUE);
-    nodelay(mainwin, FALSE);
+        else if (stage == 1) {  // local disks
+            auto disks = list_disks();
+            int idx = 0;
+            static int loopIndex = 0;
 
-    while (true) {
-        // draw and accept input
-        draw_disks(mainwin, idx, disks);
-        int ch = wgetch(mainwin);
+            while (true) {
+                draw_disks(mainwin, idx, disks);
+                draw_footer(footer, "Select a disk to wipe | R: Refresh | B: Back to menu");
+                
+                int ch = wgetch(mainwin);
 
-        if (ch == KEY_UP && idx > 0) idx--;
-        else if (ch == KEY_DOWN && idx < (int)disks.size() - 1) idx++;
-        else if (ch == 'r' || ch == 'R') {
-            disks = list_disks();
-            if (idx >= (int)disks.size()) idx = (int)disks.size() - 1;
+                if (ch == KEY_UP && idx > 0) idx--;
+                else if (ch == KEY_DOWN && idx < (int)disks.size() - 1) idx++;
+                else if (ch == 'r' || ch == 'R') {
+                    disks = list_disks();
+                    if (idx >= (int)disks.size()) idx = (int)disks.size() - 1;
+                }
+                else if (ch == 'b' || ch == 'B') { stage = 0; break; }
+                else if (ch == 'q' || ch == 'Q') { endwin(); return 0; }
+
+                else if (ch == 10 || ch == KEY_ENTER) {
+                    if (disks.empty()) continue;
+                    Disk &d = disks[idx];
+
+                    std::string confirm_prompt;
+                    bool is_loop = (d.node.rfind("/dev/loop", 0) == 0);
+                    if (!d.serial.empty() && !is_loop) {
+                        confirm_prompt = "Type device SERIAL to confirm wipe:";
+                    } else {
+                        confirm_prompt = std::string("Type device node (") + d.node + ") to confirm wipe:";
+                    }
+
+                    werase(mainwin);
+                    draw_box_with_title(mainwin, "Confirm Device Wipe", COLOR_SUCCESS);
+                    mvwprintw(mainwin, 3, 4, "Selected: %s", d.node.c_str());
+                    mvwprintw(mainwin, 4, 4, "Model:    %s", d.model.empty() ? "Unknown" : d.model.c_str());
+                    mvwprintw(mainwin, 5, 4, "Serial:   %s", d.serial.empty() ? "N/A" : d.serial.c_str());
+                    mvwprintw(mainwin, 6, 4, "Size:     %s", d.size.c_str());
+                    
+                    wattron(mainwin, COLOR_PAIR(COLOR_ERROR) | A_BOLD);
+                    mvwprintw(mainwin, 8, 4, "WARNING: ALL DATA WILL BE PERMANENTLY ERASED!");
+                    wattroff(mainwin, COLOR_PAIR(COLOR_ERROR) | A_BOLD);
+                    
+                    mvwprintw(mainwin, 10, 4, "%s", confirm_prompt.c_str());
+                    wrefresh(mainwin);
+
+                    echo();
+                    curs_set(1);
+                    char buf[256];
+                    mvwgetnstr(mainwin, 11, 4, buf, sizeof(buf) - 1);
+                    noecho();
+                    curs_set(0);
+                    std::string confirm(buf);
+
+                    bool confirmed = false;
+                    if (d.serial.empty()) {
+                        d.serial = "LOOP-" + std::to_string(loopIndex);
+                    }
+
+                    if (!d.serial.empty() && !is_loop) {
+                        if (confirm == d.serial) confirmed = true;
+                    } else {
+                        if (confirm == d.node) confirmed = true;
+                    }
+
+                    if (!confirmed) {
+                        show_result(mainwin, false, "Wipe Cancelled", 
+                                   "Serial/node mismatch", 
+                                   "The confirmation text did not match. Operation aborted for safety.");
+                        wgetch(mainwin);
+                        continue;
+                    }
+
+                    // Determine wipe method
+                    std::string method;
+                    if (d.node.find("nvme") != std::string::npos) {
+                        method = "nvme-format";
+                    } else if (d.node.find("loop") != std::string::npos) {
+                        method = "wipefs-zap";
+                    } else if (d.node.find("sd") != std::string::npos || d.model.find("ATA") != std::string::npos) {
+                        method = "ata-secure-erase";
+                    } else {
+                        method = "overwrite-zero";
+                    }
+
+                    werase(mainwin);
+                    draw_box_with_title(mainwin, "Confirm Wipe Method", COLOR_TITLE);
+                    mvwprintw(mainwin, 3, 4, "Device:  %s", d.node.c_str());
+                    mvwprintw(mainwin, 4, 4, "Method:  %s", method.c_str());
+                    if (!is_loop) mvwprintw(mainwin, 6, 4, "Note: FORCE_REAL=1 will be set for real device operation");
+                    
+                    mvwprintw(mainwin, 8, 4, "Press ENTER to proceed, B to cancel");
+                    wrefresh(mainwin);
+
+                    int okc = wgetch(mainwin);
+                    if (okc == 'b' || okc == 'B') continue;
+                    if (!(okc == 10 || okc == KEY_ENTER)) continue;
+
+                    // Build command
+                    std::string cmd;
+                    if (is_loop) {
+                        cmd = "sudo bash ./wipe-device.sh " + d.node + " " + method + " > /tmp/sentinel-wipe.log 2>&1";
+                    } else {
+                        cmd = "sudo FORCE_REAL=1 bash /opt/sentinel/scripts/wipe-device.sh " + d.node + " " + method + " > /tmp/sentinel-wipe.log 2>&1";
+                    }
+
+                    draw_progress(mainwin, "Wiping Device", "Please wait... This may take several minutes");
+                    wrefresh(mainwin);
+
+                    int rc = run_system(cmd);
+
+                    // Post-wipe verification
+                    run_system(std::string("sudo partprobe ") + d.node + " >/dev/null 2>&1 || true");
+                    std::string wipefs_out = run_cmd_capture(std::string("sudo wipefs ") + d.node + " 2>/dev/null || true");
+
+                    auto refreshed = list_disks();
+                    bool still_exists = false;
+                    for (auto &x : refreshed) if (x.node == d.node) { still_exists = true; break; }
+
+                    // Show result
+                    std::string details = "Log: /tmp/sentinel-wipe.log\n";
+                    if (!wipefs_out.empty()) {
+                        details += "Wipefs output:\n" + wipefs_out;
+                    }
+
+                    if (rc == 0 && !still_exists) {
+                        show_result(mainwin, true, "Wipe Complete", 
+                                   "Device successfully wiped and removed", details);
+                    } else if (rc == 0 && still_exists) {
+                        show_result(mainwin, true, "Wipe Complete", 
+                                   "Device wiped but still visible (check details)", details);
+                    } else {
+                        show_result(mainwin, false, "Wipe Failed", 
+                                   "Operation failed - see log for details", details);
+                    }
+                    
+                    wgetch(mainwin);
+
+                    // Refresh disk list
+                    disks = list_disks();
+                    if (idx >= (int)disks.size()) idx = (int)disks.size()-1;
+                }
+            }
         }
-        else if (ch == 'b' || ch == 'B') { stage = 0; break; }
-        else if (ch == 'q' || ch == 'Q') { endwin(); return 0; }
-
-        else if (ch == 10 || ch == KEY_ENTER) {
-            if (disks.empty()) continue;
-            Disk &d = disks[idx];
-
-            std::string confirm_prompt;
-            bool is_loop = (d.node.rfind("/dev/loop", 0) == 0);
-            if (!d.serial.empty() && !is_loop) {
-                confirm_prompt = "Type device SERIAL to confirm wipe:";
-            } else {
-                confirm_prompt = std::string("Type device node (") + d.node + ") to confirm wipe:";
-            }
-
-            werase(mainwin);
-            box(mainwin, 0, 0);
-            mvwprintw(mainwin, 2, 2, "Selected disk: %s", d.node.c_str());
-            mvwprintw(mainwin, 3, 2, "Model: %s", d.model.c_str());
-            mvwprintw(mainwin, 4, 2, "Serial: %s", d.serial.c_str());
-            mvwprintw(mainwin, 6, 2, "%s", confirm_prompt.c_str());
-            wrefresh(mainwin);
-
-            echo();
-            curs_set(1);
-            char buf[256];
-            mvwgetnstr(mainwin, 7, 4, buf, sizeof(buf) - 1);
-            noecho();
-            curs_set(0);
-            std::string confirm(buf);
-
-            bool confirmed = false;
-            if (d.serial.empty()) {
-    d.serial = "LOOP-" + std::to_string(loopIndex);
-}
-
-            if (!d.serial.empty() && !is_loop) {
-                if (confirm == d.serial) confirmed = true;
-            } else {
-                if (confirm == d.node) confirmed = true;
-            }
-
-            if (!confirmed) {
-                werase(mainwin);
-                box(mainwin, 0, 0);
-                wattron(mainwin, COLOR_PAIR(1));
-                mvwprintw(mainwin, 3, 2, "Serial/node mismatch. Aborting.");
-                wattroff(mainwin, COLOR_PAIR(1));
-                mvwprintw(mainwin, 5, 2, "Press any key to return.");
-                wrefresh(mainwin);
-                wgetch(mainwin);
-                continue;
-            }
-            // Determine wipe method
-            std::string method;
-            if (d.node.find("nvme") != std::string::npos) {
-                method = "nvme-format";
-            } else if (d.node.find("loop") != std::string::npos) {
-                method = "wipefs-zap";
-            } else if (d.node.find("sd") != std::string::npos || d.model.find("ATA") != std::string::npos) {
-                method = "ata-secure-erase";
-            } else {
-                method = "overwrite-zero";
-            }
-
-            werase(mainwin);
-            box(mainwin, 0, 0);
-            mvwprintw(mainwin, 2, 2, "Wiping %s", d.node.c_str());
-            mvwprintw(mainwin, 3, 2, "Auto-selected method: %s", method.c_str());
-            if (!is_loop) mvwprintw(mainwin, 4, 2, "Note: FORCE_REAL=1 will be set to allow operation on real device.");
-            mvwprintw(mainwin, 6, 2, "Press ENTER to proceed, b to cancel.");
-            wrefresh(mainwin);
-
-            int okc = wgetch(mainwin);
-            if (okc == 'b' || okc == 'B') continue;
-            if (!(okc == 10 || okc == KEY_ENTER)) continue;
-
-            // Build command. Use FORCE_REAL=1 for non-loop devices.
-            std::string cmd;
-            if (is_loop) {
-                cmd = "sudo bash ./wipe-device.sh " + d.node + " " + method + " > /tmp/sentinel-wipe.log 2>&1";
-            } else {
-cmd = "sudo FORCE_REAL=1 bash /opt/sentinel/scripts/wipe-device.sh " + d.node + " " + method + " > /tmp/sentinel-wipe.log 2>&1";            }
-
-            werase(mainwin);
-            box(mainwin, 0, 0);
-            mvwprintw(mainwin, 2, 2, "Running: %s", cmd.c_str());
-            mvwprintw(mainwin, 4, 2, "Logs: /tmp/sentinel-wipe.log");
-            mvwprintw(mainwin, 6, 2, "Please wait...");
-            wrefresh(mainwin);
-
-            int rc = run_system(cmd);
-
-            // Post-wipe: force re-read, then run a quick verification (wipefs & lsblk)
-            run_system(std::string("sudo partprobe ") + d.node + " >/dev/null 2>&1 || true");
-            std::string wipefs_out = run_cmd_capture(std::string("sudo wipefs ") + d.node + " 2>/dev/null || true");
-
-            auto refreshed = list_disks();
-            bool still_exists = false;
-            for (auto &x : refreshed) if (x.node == d.node) { still_exists = true; break; }
-
-            // Present results with colors
-            werase(mainwin);
-            box(mainwin, 0, 0);
-            if (rc == 0 && !still_exists) {
-                wattron(mainwin, COLOR_PAIR(2));
-                mvwprintw(mainwin, 2, 2, "Wipe succeeded and device seems removed: %s", d.node.c_str());
-                wattroff(mainwin, COLOR_PAIR(2));
-            } else if (rc == 0 && still_exists) {
-                wattron(mainwin, COLOR_PAIR(3));
-                mvwprintw(mainwin, 2, 2, "Wipe finished, but device still visible (check below): %s", d.node.c_str());
-                wattroff(mainwin, COLOR_PAIR(3));
-            } else {
-                wattron(mainwin, COLOR_PAIR(1));
-                mvwprintw(mainwin, 2, 2, "Wipe failed (rc=%d). See log.", rc);
-                wattroff(mainwin, COLOR_PAIR(1));
-            }
-
-            mvwprintw(mainwin, 4, 2, "wipefs output (if any):");
-            int row = 5;
-            std::istringstream iss(wipefs_out);
-            std::string l;
-            while (std::getline(iss, l) && row < getmaxy(mainwin)-2) {
-                mvwprintw(mainwin, row++, 4, "%s", l.c_str());
-            }
-            mvwprintw(mainwin, getmaxy(mainwin)-3, 2, "Log: /tmp/sentinel-wipe.log");
-            mvwprintw(mainwin, getmaxy(mainwin)-2, 2, "Press any key to return.");
-            wrefresh(mainwin);
-            wgetch(mainwin);
-
-            // refresh local disk list for UI
-            disks = list_disks();
-            if (idx >= (int)disks.size()) idx = (int)disks.size()-1;
-        }
-    }
-}
-
 
         else if (stage == 2) {  // Android device wipe
-    std::string mode = "fastboot";
-    int idx = 0;
+            std::string mode = "fastboot";
+            std::string detected_device = "";
 
-    while (true) {
-        werase(mainwin);
-        box(mainwin, 0, 0);
-        wattron(mainwin, COLOR_PAIR(3));
-        mvwprintw(mainwin, 1, 2, "=== Android Wipe Utility ===");
-        wattroff(mainwin, COLOR_PAIR(3));
-        mvwprintw(mainwin, 3, 4, "[1] Detect via fastboot");
-        mvwprintw(mainwin, 4, 4, "[2] Detect via adb");
-        mvwprintw(mainwin, 6, 4, "r = rescan, b = back, q = quit");
-        mvwprintw(mainwin, 8, 4, "Current mode: %s", mode.c_str());
-        wrefresh(mainwin);
+            while (true) {
+                draw_android(mainwin, mode, detected_device);
+                draw_footer(footer, "1/2: Mode | R: Scan | ENTER: Wipe | B: Back");
 
-        int ch = wgetch(mainwin);
-        if (ch == '1') mode = "fastboot";
-        else if (ch == '2') mode = "adb";
-        else if (ch == 'b' || ch == 'B') { stage = 0; break; }
-        else if (ch == 'q' || ch == 'Q') { endwin(); return 0; }
+                int ch = wgetch(mainwin);
+                if (ch == '1') mode = "fastboot";
+                else if (ch == '2') mode = "adb";
+                else if (ch == 'b' || ch == 'B') { stage = 0; break; }
+                else if (ch == 'q' || ch == 'Q') { endwin(); return 0; }
 
-        else if (ch == 'r' || ch == 'R' || ch == 10 || ch == KEY_ENTER) {
-            werase(mainwin);
-            box(mainwin, 0, 0);
-            wattron(mainwin, COLOR_PAIR(3));
-            mvwprintw(mainwin, 2, 2, "Detecting Android devices (%s)...", mode.c_str());
-            wattroff(mainwin, COLOR_PAIR(3));
-            wrefresh(mainwin);
+                else if (ch == 'r' || ch == 'R' || (ch == 10 && detected_device.empty())) {
+                    draw_progress(mainwin, "Detecting Android Devices", 
+                                 "Scanning for " + mode + " devices...");
+                    
+                    std::string detect_cmd = "bash /opt/sentinel/scripts/detect-android.sh " + mode + " > /tmp/sentinel-detect.log 2>&1";
+                    system(detect_cmd.c_str());
 
-            // detect device using detect-android.sh
-            std::string detect_cmd = "bash /opt/sentinel/scripts/detect-android.sh " + mode + " > /tmp/sentinel-detect.log 2>&1";
-            int detect_rc = system(detect_cmd.c_str());
-            (void)detect_rc;  // silence warning
+                    // Read detection result
+                    std::ifstream log("/tmp/sentinel-detect.log");
+                    std::string serial, line;
+                    if (log.is_open()) {
+                        while (std::getline(log, line)) {
+                            if (line.find("Found") != std::string::npos) {
+                                auto pos = line.find_last_of(' ');
+                                if (pos != std::string::npos) serial = line.substr(pos + 1);
+                                break;
+                            }
+                        }
+                        log.close();
+                    }
 
-            // read first serial from detect output
-            std::ifstream log("/tmp/sentinel-detect.log");
-            std::string serial, line;
-            if (log.is_open()) {
-                while (std::getline(log, line)) {
-                    if (line.find("Found") != std::string::npos) {
-                        auto pos = line.find_last_of(' ');
-                        if (pos != std::string::npos) serial = line.substr(pos + 1);
-                        break;
+                    detected_device = serial;
+                    
+                    if (detected_device.empty()) {
+                        show_result(mainwin, false, "Detection Failed", 
+                                   "No " + mode + " device found", 
+                                   "Make sure device is connected and in correct mode");
+                        wgetch(mainwin);
                     }
                 }
-                log.close();
+                else if (ch == 10 || ch == KEY_ENTER) {
+                    if (detected_device.empty()) continue;
+
+                    draw_progress(mainwin, "Wiping Android Device", 
+                                 "Wiping " + detected_device + " via " + mode);
+                    
+                    std::string wipe_cmd = "bash /opt/sentinel/scripts/android-wipe.sh " + mode + " " + detected_device + " > /tmp/sentinel-android.log 2>&1";
+                    int rc = system(wipe_cmd.c_str());
+
+                    std::string details = "Device: " + detected_device + "\nMode: " + mode + "\nLog: /tmp/sentinel-android.log";
+                    show_result(mainwin, rc == 0, "Android Wipe", 
+                               rc == 0 ? "Device wipe completed" : "Wipe operation failed", 
+                               details);
+                    
+                    wgetch(mainwin);
+                    detected_device = "";
+                }
             }
-
-            werase(mainwin);
-            box(mainwin, 0, 0);
-            if (!serial.empty()) {
-                wattron(mainwin, COLOR_PAIR(2));
-                mvwprintw(mainwin, 2, 2, "Detected device: %s", serial.c_str());
-                wattroff(mainwin, COLOR_PAIR(2));
-                mvwprintw(mainwin, 4, 2, "Press ENTER to wipe, or b to cancel.");
-            } else {
-                wattron(mainwin, COLOR_PAIR(1));
-                mvwprintw(mainwin, 2, 2, "No %s device detected.", mode.c_str());
-                wattroff(mainwin, COLOR_PAIR(1));
-                mvwprintw(mainwin, 4, 2, "Press any key to retry or b to go back.");
-                wrefresh(mainwin);
-                wgetch(mainwin);
-                continue;
-            }
-            wrefresh(mainwin);
-
-            int k = wgetch(mainwin);
-            if (k == 'b' || k == 'B') continue;
-            if (k != 10 && k != KEY_ENTER) continue;
-
-            // run android-wipe.sh
-            werase(mainwin);
-            box(mainwin, 0, 0);
-            wattron(mainwin, COLOR_PAIR(3));
-            mvwprintw(mainwin, 2, 2, "Running android wipe (%s) on device: %s", mode.c_str(), serial.c_str());
-            wattroff(mainwin, COLOR_PAIR(3));
-            mvwprintw(mainwin, 4, 2, "Logs are being generated...");
-            wrefresh(mainwin);
-
-            std::string wipe_cmd = "bash /opt/sentinel/scripts/android-wipe.sh " + mode + " " + serial + " > /tmp/sentinel-android.log 2>&1";
-            int rc = system(wipe_cmd.c_str());
-
-            // post-wipe message
-            werase(mainwin);
-            box(mainwin, 0, 0);
-            if (rc == 0)
-                wattron(mainwin, COLOR_PAIR(2));
-            else
-                wattron(mainwin, COLOR_PAIR(1));
-
-            mvwprintw(mainwin, 3, 2, "Android wipe finished with status: %d", rc);
-            mvwprintw(mainwin, 5, 2, "Attestation generated via attest.sh");
-            mvwprintw(mainwin, 7, 2, "Log: /tmp/sentinel-android.log");
-
-            wattroff(mainwin, COLOR_PAIR(1));
-            wattroff(mainwin, COLOR_PAIR(2));
-
-            mvwprintw(mainwin, 9, 2, "Press any key to return.");
-            wrefresh(mainwin);
-            wgetch(mainwin);
         }
     }
-}
-    }
+    
+    delwin(header);
+    delwin(mainwin);
+    delwin(footer);
     endwin();
     return 0;
 }

@@ -11,7 +11,7 @@ if [ -z "$SUDO_USER" ] || [ "$SUDO_USER" = "root" ]; then
   exit 1
 fi
 
-ISO_NAME="sentinel-live-$(date +%Y%m%d-%H%M%S).iso"
+ISO_NAME="void-live-$(date +%Y%m%d-%H%M%S).iso"
 
 SCRIPT_SOURCE_DIR=$(eval echo ~"$SUDO_USER")/Work/minimal-sentinal
 if [ ! -f "${SCRIPT_SOURCE_DIR}/main.cpp" ]; then
@@ -36,6 +36,7 @@ TCZ_DEPS=(
   # "libblkid.tcz"
   # "libuuid.tcz"
   "ncursesw.tcz"
+  #"ncurses-terminfo.tcz"
   "readline.tcz"
   "lzo.tcz"
   "pcre.tcz"
@@ -46,7 +47,7 @@ TCZ_DEPS=(
   "libzstd.tcz"
 )
 
-echo "==== Sentinel ISO Builder ===="
+echo "==== VOID ISO Builder ===="
 
 if [ ! -f "${SCRIPT_SOURCE_DIR}/main.cpp" ]; then
   echo "ERROR: main.cpp missing in ${SCRIPT_SOURCE_DIR}"
@@ -125,9 +126,9 @@ fi
 
 echo "[*] Checking binary linkage..."
 if ldd "${WORK_DIR}/sentinel-gui" 2>&1 | grep -q "not a dynamic executable"; then
-  echo "[*] Binary is statically linked ✓"
+  echo "[*] Binary is statically linked [OK]"
 elif ldd "${WORK_DIR}/sentinel-gui" 2>&1 | grep -q "statically linked"; then
-  echo "[*] Binary is statically linked ✓"
+  echo "[*] Binary is statically linked [OK]"
 else
   echo "WARNING: Binary may not be fully static:"
   ldd "${WORK_DIR}/sentinel-gui" 2>&1
@@ -255,27 +256,52 @@ mkdir -p home/tc/.local/bin
 cat > home/tc/.local/bin/sentinel-start.sh <<'AUTOSTART'
 #!/bin/sh
 clear
-cat <<'BANNER'
-╔════════════════════════════════════════════════╗
-║         Sentinel Live USB System               ║
-║     Secure Device Wipe & Attestation           ║
-╚════════════════════════════════════════════════╝
 
-Starting Sentinel GUI...
+# Set compatible terminal type
+export TERM=linux
+
+cat <<'BANNER'
+╔═══════════════════════════════════════════════╗
+║            VOID LIVE USB SYSTEM               ║
+║     Secure Device Wipe & Attestation          ║
+╚═══════════════════════════════════════════════╝
+
 BANNER
+
+echo "Initializing VOID GUI..."
 sleep 1
 
-# Check if binary exists and is executable
+# Verify binary integrity
 if [ ! -x /opt/sentinel/bin/sentinel-gui ]; then
+  echo ""
   echo "ERROR: sentinel-gui not found or not executable"
   echo "Path: /opt/sentinel/bin/sentinel-gui"
-  ls -la /opt/sentinel/bin/
   echo ""
-  echo "Press Enter to get shell..."
+  ls -la /opt/sentinel/bin/ 2>/dev/null || echo "Directory not found"
+  echo ""
+  echo "Press Enter to access shell for debugging..."
   read
   exit 1
 fi
 
+# Check for required scripts
+MISSING_SCRIPTS=""
+for script in wipe-device.sh detect-android.sh android-wipe.sh; do
+  if [ ! -x "/opt/sentinel/scripts/$script" ]; then
+    MISSING_SCRIPTS="$MISSING_SCRIPTS $script"
+  fi
+done
+
+if [ -n "$MISSING_SCRIPTS" ]; then
+  echo ""
+  echo "WARNING: Missing scripts:$MISSING_SCRIPTS"
+  echo "Some features may not work correctly."
+  echo ""
+  sleep 2
+fi
+
+# Launch the GUI
+clear
 exec /opt/sentinel/bin/sentinel-gui
 AUTOSTART
 chmod +x home/tc/.local/bin/sentinel-start.sh
@@ -291,18 +317,74 @@ PROFILE
 cat > opt/bootlocal.sh <<'BOOTLOCAL'
 #!/bin/sh
 # Sentinel boot setup
+
+# Set permissions
 chown -R tc:staff /home/tc
 chmod 755 /opt/sentinel/bin/sentinel-gui
-chmod +x /opt/sentinel/scripts/*
+chmod +x /opt/sentinel/scripts/* 2>/dev/null
+
+# Create log directory
+mkdir -p /tmp/sentinel-logs
+chmod 777 /tmp/sentinel-logs
 
 # Verify binary integrity at boot
 if [ -f /opt/sentinel/bin/sentinel-gui ]; then
   if ! file /opt/sentinel/bin/sentinel-gui | grep -q "ELF"; then
-    echo "WARNING: sentinel-gui binary is corrupted!" > /tmp/sentinel-error.log
+    echo "CRITICAL: sentinel-gui binary is corrupted!" > /tmp/sentinel-error.log
+    echo "Boot may fail. Check /tmp/sentinel-error.log" >> /dev/console
   fi
 fi
+
+# Load USB/storage modules
+modprobe usb-storage 2>/dev/null
+modprobe uas 2>/dev/null
+
+# Wait for devices to settle
+sleep 2
+
 BOOTLOCAL
 chmod +x opt/bootlocal.sh
+
+echo "[*] Configuring terminal settings..."
+cat > home/tc/.Xdefaults <<'XDEFAULTS'
+XTerm*faceName: Monospace
+XTerm*faceSize: 10
+XTerm*background: black
+XTerm*foreground: white
+XDEFAULTS
+
+# Configure terminal for ncurses compatibility
+cat > home/tc/.bashrc <<'BASHRC'
+export TERM=linux
+export NCURSES_NO_UTF8_ACS=1
+alias sentinel='/opt/sentinel/bin/sentinel-gui'
+BASHRC
+
+echo "[*] Validating installation..."
+
+# Check binary
+if [ ! -f "${WORK_DIR}/extract/opt/sentinel/bin/sentinel-gui" ]; then
+  echo "ERROR: sentinel-gui not copied to rootfs"
+  exit 1
+fi
+
+# Check scripts
+REQUIRED_SCRIPTS="wipe-device.sh detect-android.sh android-wipe.sh"
+for script in $REQUIRED_SCRIPTS; do
+  if [ ! -f "${WORK_DIR}/extract/opt/sentinel/scripts/$script" ]; then
+    echo "WARNING: Missing script: $script"
+  else
+    echo "[*] Found script: $script [OK]"
+  fi
+done
+
+# Verify autostart is in place
+if [ ! -f "${WORK_DIR}/extract/home/tc/.local/bin/sentinel-start.sh" ]; then
+  echo "ERROR: sentinel-start.sh not created"
+  exit 1
+fi
+
+echo "[*] Installation validated [OK]"
 
 echo "[*] Repacking rootfs..."
 find . | cpio -o -H newc 2>/dev/null | gzip -9 > "$CORE_FILE"
@@ -351,7 +433,7 @@ if [ -f "${WORK_DIR}/newiso/boot/grub/grub.cfg" ]; then
 set timeout=3
 set default=0
 
-menuentry "Sentinel Live System" {
+menuentry "VOID Live System" {
   linux /boot/${KERNEL_FILE} quiet loglevel=3
   initrd /boot/${INITRD_FILE}
 }
@@ -363,7 +445,7 @@ echo "[6/6] Building final ISO..."
 
 cd "${WORK_DIR}"
 
-mkisofs -l -J -R -V "SENTINEL_LIVE" \
+mkisofs -l -J -R -V "VOID_LIVE" \
   -no-emul-boot -boot-load-size 4 -boot-info-table \
   -b boot/isolinux/isolinux.bin \
   -c boot/isolinux/boot.cat \
@@ -383,15 +465,17 @@ if [ -f "${ISO_NAME}" ]; then
   ISO_SIZE=$(du -h "${ISO_NAME}" | cut -f1)
   
   echo ""
-  echo "╔════════════════════════════════════════╗"
-  echo "║       ISO BUILD COMPLETE ✓             ║"
-  echo "╚════════════════════════════════════════╝"
+  echo "╔═══════════════════════════════════════╗"
+  echo "║       ISO BUILD COMPLETE              ║"
+  echo "╚═══════════════════════════════════════╝"
   echo "  ISO:    ${ISO_NAME}"
   echo "  Size:   ${ISO_SIZE}"
   echo "  Core:   ${CORE_SIZE}"
   echo "  Binary: ${BINARY_SIZE}"
   echo ""
   echo "Write to USB: sudo dd if=${ISO_NAME} of=/dev/sdX bs=4M status=progress"
+  echo ""
+  echo "Test in VM:   qemu-system-x86_64 -m 2048 -cdrom ${ISO_NAME}"
 else
   echo "ERROR: ISO was not created!"
   exit 1
