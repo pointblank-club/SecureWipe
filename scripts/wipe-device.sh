@@ -5,14 +5,12 @@ METHOD="${2:-overwrite-random}"
 LOG="/tmp/sentinel-wipe-$(date +%s).log"
 echo "[*] wipe-device.sh -> dev:$DEV method:$METHOD" | tee "$LOG"
 
-# safety checks: refuse to wipe rootfs by default
 ROOT_DEV="$(findmnt -n -o SOURCE / | sed -n '1p' || true)"
 if [ "$DEV" = "$ROOT_DEV" ]; then
   echo "Refusing to wipe running root device ($DEV). Use --allow-real or set FORCE_REAL=1 if you know what you are doing." | tee -a "$LOG"
   exit 2
 fi
 
-# only allow real non-loop devices if --allow-real or FORCE_REAL set
 IS_LOOP=0
 if [[ "$DEV" == /dev/loop* ]]; then IS_LOOP=1; fi
 
@@ -21,7 +19,6 @@ if [[ "$IS_LOOP" -eq 0 && "${FORCE_REAL:-0}" != "1" && "$*" != *"--allow-real"* 
   exit 3
 fi
 
-# unmount partitions
 echo "[*] unmounting partitions for $DEV" | tee -a "$LOG"
 for p in $(lsblk -ln -o NAME "${DEV}" 2>/dev/null | tail -n +2); do
   mp=$(lsblk -ln -o MOUNTPOINT "/dev/$p" 2>/dev/null)
@@ -59,7 +56,6 @@ case "$METHOD" in
     ;;
   ata-secure-erase)
     echo "[*] ATA secure erase" | tee -a "$LOG"
-    # generate temporary password 'P' and perform secure erase
     hdparm --user-master u --security-set-pass P "$DEV" 2>&1 | tee -a "$LOG"
     hdparm --security-erase P "$DEV" 2>&1 | tee -a "$LOG"
     ;;
@@ -69,11 +65,9 @@ case "$METHOD" in
     ;;
 esac
 
-# existing lines at end of wipe-device.sh
 sync
 echo "[*] done. log: $LOG" | tee -a "$LOG"
 
-# create attestation (non-fatal if it fails)
 if command -v bash >/dev/null 2>&1; then
   echo "[*] creating attestation..."
   bash "$(dirname "$(realpath "$0")")/attest.sh" "$DEV" "$METHOD" "$LOG" || echo "[!] attestation failed; check scripts/attest.sh" | tee -a "$LOG"

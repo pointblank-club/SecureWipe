@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage:
-#   scripts/attest.sh <device_node> <wipe_method> <logfile>
 DEV="${1:-}"
 WIPE_METHOD="${2:-unknown}"
 LOGFILE="${3:-/dev/null}"
@@ -12,14 +10,12 @@ if [ -z "$DEV" ]; then
   exit 2
 fi
 
-# who should own output (if run under sudo, SUDO_USER is the human)
 OWNER="${SUDO_USER:-$USER}"
 GROUP="$(id -gn "$OWNER" 2>/dev/null || echo "$OWNER")"
 
 sha256_file() { sha256sum "$1" 2>/dev/null | awk '{print $1}'; }
 now_ts() { date --utc +"%Y-%m-%dT%H:%M:%SZ"; }
 
-# base lsblk info
 LSBLK_OUT=$(lsblk -P -b -o NAME,KNAME,MODEL,SERIAL,SIZE,VENDOR "$DEV" 2>/dev/null || true)
 parse_field(){ local key=$1; echo "$LSBLK_OUT" | sed -n "s/.*${key}=\"\\([^\"]*\\)\".*/\\1/p" || true; }
 
@@ -29,7 +25,6 @@ MODEL="$(parse_field MODEL)"
 SERIAL="$(parse_field SERIAL)"
 SIZE="$(parse_field SIZE)"
 
-# Extra tries: udevadm and /sys if available (best effort)
 if command -v udevadm >/dev/null 2>&1; then
   UDEV_OUT=$(udevadm info --query=property --name="$DEV" 2>/dev/null || true)
   u_model=$(echo "$UDEV_OUT" | awk -F= '/ID_MODEL=/{print $2; exit}' || true)
@@ -38,22 +33,18 @@ if command -v udevadm >/dev/null 2>&1; then
   SERIAL="${SERIAL:-$u_serial}"
 fi
 
-# Try sysfs fields
 SYSBASE="/sys/block/$(basename "$DEV")/device"
 if [ -d "$SYSBASE" ]; then
   [ -f "$SYSBASE/model" ] && [ -z "$MODEL" ] && MODEL=$(cat "$SYSBASE/model" 2>/dev/null || true)
   [ -f "$SYSBASE/serial" ] && [ -z "$SERIAL" ] && SERIAL=$(cat "$SYSBASE/serial" 2>/dev/null || true)
-  # NVMe sometimes uses /sys/block/nvme0n1/device/serial
   [ -f "$SYSBASE/wwid" ] && [ -z "$SERIAL" ] && SERIAL=$(cat "$SYSBASE/wwid" 2>/dev/null || true)
 fi
 
-# tidy defaults
 MODEL="${MODEL:-unknown}"
 SERIAL="${SERIAL:-unknown}"
 SIZE="${SIZE:-0}"
 KNAME="${KNAME:-unknown}"
 
-# device type
 case "$DEV" in
   /dev/nvme*) DRVTYPE="nvme" ;;
   /dev/sd*)   DRVTYPE="ata" ;;
@@ -61,11 +52,9 @@ case "$DEV" in
   *)          DRVTYPE="block" ;;
 esac
 
-# fingerprint
 FINGERPRINT_INPUT="${SERIAL}|${MODEL}|${SIZE}|${DEV}"
 FINGERPRINT=$(echo -n "$FINGERPRINT_INPUT" | sha256sum | awk '{print $1}')
 
-# sample hash first 1MiB (best effort)
 SAMPLE_HASH="unavailable"
 if [ -b "$DEV" ]; then
   SAMPLE_TMP=$(mktemp)
@@ -108,7 +97,6 @@ cat > "$ATTEST_JSON" <<EOF
 }
 EOF
 
-# ensure key exists
 mkdir -p keys
 if [ ! -f keys/commander_key.pem ]; then
   echo "[*] generating demo RSA key at keys/commander_key.pem"
@@ -119,14 +107,11 @@ fi
 SIG_FILE="${ATTEST_JSON}.sig"
 openssl dgst -sha256 -sign keys/commander_key.pem -out "$SIG_FILE" "$ATTEST_JSON"
 
-# DEST: prefer a removable, writable mountpoint (first found), fallback to CWD/attestations
 find_removable_mount() {
-  # iterate mounted block devices, check /sys/block/<dev>/removable
   while read -r src tgt rest; do
     devbase="$(basename "$src" | sed 's/[0-9]*$//')"
     if [ -e "/sys/block/$devbase/removable" ]; then
       if [ "$(cat /sys/block/$devbase/removable 2>/dev/null || echo 0)" = "1" ]; then
-        # prefer mounts under /media /run/media /mnt
         echo "$tgt"
         return 0
       fi
@@ -146,12 +131,10 @@ fi
 mkdir -p "$DEST_DIR"
 OUT_BASE="$DEST_DIR/attest-$(basename "$DEV")-$(date +%Y%m%dT%H%M%SZ)"
 
-# copy and set safe perms, ensure owner is human
 cp "$ATTEST_JSON" "${OUT_BASE}.json"
 cp "$SIG_FILE" "${OUT_BASE}.sig"
 cp keys/commander_pub.pem "${OUT_BASE}.pub.pem"
 
-# chown to invoking user so files are not root-only
 if command -v chown >/dev/null 2>&1; then
   sudo -n true 2>/dev/null || true
   chown "${OWNER}:${GROUP}" "${OUT_BASE}.json" "${OUT_BASE}.sig" "${OUT_BASE}.pub.pem" 2>/dev/null || true

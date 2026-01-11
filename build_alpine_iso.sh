@@ -268,7 +268,6 @@ mkisofs -l -J -R -V "SENTINEL_LIVE" \
   -o "${SCRIPT_SOURCE_DIR}/${ISO_NAME}" \
   newiso/ 2>&1 | grep -v "^Warning: creating filesystem"
 
-# Make it hybrid (bootable from USB)
 if command -v isohybrid &>/dev/null; then
   isohybrid "${SCRIPT_SOURCE_DIR}/${ISO_NAME}" 2>/dev/null || true
 fi

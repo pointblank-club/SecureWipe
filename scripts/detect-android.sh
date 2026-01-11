@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-MODE="${2:-adb}"  # fastboot or adb
+MODE="${2:-adb}"
 LOG="/tmp/sentinel-detect-android-$(date +%s).log"
 
 echo "[*] android-detect -> mode:$MODE" | tee "$LOG"

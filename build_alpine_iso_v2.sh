@@ -1,17 +1,7 @@
 #!/bin/bash
-#
-# build.sh - Sentinel Alpine ISO Builder (v5.3 - OVERLAY FIX)
-#
-# Critical Fixes:
-# - Proper apkovl structure (tar from INSIDE overlay dir, not from parent)
-# - Correct Alpine overlay format (must contain etc/, home/, root/, etc at TOP level)
-# - Fixed bootloader params with proper apkovl path
-# - Ensures overlay is actually applied on boot
-#
 
 set -e
 
-# --- 0. Sudo / User Checks ---
 if [ "$EUID" -ne 0 ]; then
   echo "ERROR: Must be run with sudo. Try: sudo ./build.sh"
   exit 1
@@ -22,7 +12,6 @@ if [ -z "$SUDO_USER" ] || [ "$SUDO_USER" = "root" ]; then
   exit 1
 fi
 
-# --- 1. Configuration ---
 ALPINE_VERSION="3.20"
 ALPINE_RELEASE="3.20.0"
 ISO_NAME="sentinel-live-$(date +%Y%m%d-%H%M%S).iso"
@@ -40,7 +29,6 @@ echo " Sentinel Alpine ISO Builder (v5.3 - OVERLAY FIX)"
 echo "════════════════════════════════════════════════"
 echo ""
 
-# --- 2. Sanity Checks ---
 if [ ! -f "${SCRIPT_SOURCE_DIR}/main.cpp" ]; then
   echo "ERROR: main.cpp missing."
   exit 1
@@ -62,14 +50,12 @@ if ! sudo -u "$SUDO_USER" docker info >/dev/null 2>&1; then
   exit 1
 fi
 
-# --- 3. Workspace Setup ---
 echo "[2/8] Setting up workspace..."
 rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR"/{iso_extract,overlay}
 chmod -R 777 "$WORK_DIR"
 cd "$WORK_DIR"
 
-# --- 4. Build Mini-Rootfs ---
 echo "[3/8] Building mini-rootfs in Docker..."
 MINI_ROOTFS_TAR="mini-rootfs.tar.gz"
 
@@ -131,7 +117,6 @@ if [ ! -f "${WORK_DIR}/${MINI_ROOTFS_TAR}" ]; then
   exit 1
 fi
 
-# --- 5. Extract Alpine ISO ---
 ALPINE_ISO="alpine-standard-${ALPINE_RELEASE}-x86_64.iso"
 ALPINE_URL="https://dl-cdn.alpinelinux.org/alpine/v${ALPINE_VERSION}/releases/x86_64/${ALPINE_ISO}"
 echo "[4/8] Downloading Alpine base..."
@@ -142,24 +127,17 @@ fi
 echo "[5/8] Extracting ISO..."
 xorriso -osirrox on -indev "/tmp/$ALPINE_ISO" -extract / iso_extract/
 
-# --- 6. Create Overlay (CRITICAL FIX) ---
 echo "[6/8] Creating overlay..."
 
-# Extract the full rootfs from Docker build
 rm -rf "${WORK_DIR}/overlay"
 mkdir -p "${WORK_DIR}/overlay"
 tar -xzf "${WORK_DIR}/${MINI_ROOTFS_TAR}" -C "${WORK_DIR}/overlay"
 
-# CRITICAL: Alpine apkovl MUST be created FROM INSIDE the overlay directory
-# The tar must have etc/, usr/, root/, home/ etc at the TOP LEVEL (not nested)
-# This is THE fix for the localhost login bug!
 
 echo "[*] Creating apkovl tarball with correct structure..."
 (
   cd "${WORK_DIR}/overlay" || exit 1
   
-  # Create the apkovl with ALL directories at root level
-  # Use --numeric-owner to preserve uid/gid correctly
   tar --numeric-owner -czf "${WORK_DIR}/iso_extract/sentinel.apkovl.tar.gz" \
     --exclude='./proc/*' \
     --exclude='./sys/*' \
@@ -171,7 +149,6 @@ echo "[*] Creating apkovl tarball with correct structure..."
     .
 )
 
-# Verify the overlay was created and has content
 if [ ! -f "${WORK_DIR}/iso_extract/sentinel.apkovl.tar.gz" ]; then
   echo "ERROR: Failed to create apkovl!"
   exit 1
@@ -180,42 +157,34 @@ fi
 OVERLAY_SIZE=$(du -h "${WORK_DIR}/iso_extract/sentinel.apkovl.tar.gz" | cut -f1)
 echo "[*] Overlay created: sentinel.apkovl.tar.gz (${OVERLAY_SIZE})"
 
-# List contents to verify structure
 echo "[*] Overlay contents (first 20 entries):"
 tar -tzf "${WORK_DIR}/iso_extract/sentinel.apkovl.tar.gz" | head -20
 
-# --- 7. Bootloader Patch (FIXED) ---
 echo "[7/8] Patching bootloaders..."
 
 GRUB_CFG="${WORK_DIR}/iso_extract/boot/grub/grub.cfg"
 SYSLINUX_CFG="${WORK_DIR}/iso_extract/boot/syslinux/syslinux.cfg"
 
-# Backup configs
 [ -f "$GRUB_CFG" ] && cp -a "$GRUB_CFG" "$GRUB_CFG.orig"
 [ -f "$SYSLINUX_CFG" ] && cp -a "$SYSLINUX_CFG" "$SYSLINUX_CFG.orig"
 
-# GRUB (EFI) - add apkovl parameter
-# Use the .tar.gz extension and proper path
 if [ -f "$GRUB_CFG" ]; then
   sed -i -E 's|^([[:space:]]*linux[[:space:]]+/boot/vmlinuz-lts[[:space:]]+.*)$|\1 apkovl=/sentinel.apkovl.tar.gz|' "$GRUB_CFG"
   sed -i 's/timeout=5/timeout=3/' "$GRUB_CFG"
   echo "[*] GRUB config patched"
 fi
 
-# SYSLINUX (BIOS) - add apkovl parameter
 if [ -f "$SYSLINUX_CFG" ]; then
   sed -i -E 's|^([[:space:]]*APPEND[[:space:]]+.*)$|\1 apkovl=/sentinel.apkovl.tar.gz|' "$SYSLINUX_CFG"
   sed -i 's/TIMEOUT [0-9]*/TIMEOUT 30/' "$SYSLINUX_CFG"
   echo "[*] SYSLINUX config patched"
 fi
 
-# Show what was changed
 if [ -f "$GRUB_CFG.orig" ]; then
   echo "[*] GRUB changes:"
   diff -u "$GRUB_CFG.orig" "$GRUB_CFG" || true
 fi
 
-# --- 8. Build ISO ---
 echo "[8/8] Building final ISO: ${ISO_NAME}..."
 xorriso -as mkisofs \
   -o "${SCRIPT_SOURCE_DIR}/${ISO_NAME}" \
@@ -230,7 +199,6 @@ xorriso -as mkisofs \
   -isohybrid-gpt-basdat \
   iso_extract/ 2>&1 | grep -v "NOTE"
 
-# Verify the ISO contains our overlay
 echo ""
 echo "[*] Verifying overlay in ISO..."
 if xorriso -indev "${SCRIPT_SOURCE_DIR}/${ISO_NAME}" -find / -name "sentinel.apkovl.tar.gz" 2>/dev/null | grep -q sentinel; then
@@ -239,7 +207,6 @@ else
   echo "    ✗ WARNING: Overlay file NOT found in ISO!"
 fi
 
-# Cleanup & ownership
 cd "$SCRIPT_SOURCE_DIR"
 rm -rf "$WORK_DIR"
 chown "$SUDO_USER:$(id -g "$SUDO_USER")" "${SCRIPT_SOURCE_DIR}/${ISO_NAME}"

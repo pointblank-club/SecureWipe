@@ -294,7 +294,6 @@ int main() {
     start_color();
     use_default_colors();
     
-    // Initialize color pairs - using white for better readability
     init_pair(COLOR_TITLE, COLOR_WHITE, -1);
     init_pair(COLOR_SUCCESS, COLOR_GREEN, -1);
     init_pair(COLOR_WARNING, COLOR_YELLOW, -1);
@@ -309,7 +308,6 @@ int main() {
     int h, w;
     getmaxyx(stdscr, h, w);
 
-    // Create windows
     WINDOW *header = newwin(4, w, 0, 0);
     WINDOW *mainwin = newwin(h - 6, w, 4, 0);
     WINDOW *footer = newwin(2, w, h - 2, 0);
@@ -411,7 +409,6 @@ int main() {
                         continue;
                     }
 
-                    // Determine wipe method
                     std::string method;
                     if (d.node.find("nvme") != std::string::npos) {
                         method = "nvme-format";
@@ -436,7 +433,6 @@ int main() {
                     if (okc == 'b' || okc == 'B') continue;
                     if (!(okc == 10 || okc == KEY_ENTER)) continue;
 
-                    // Build command
                     std::string cmd;
                     if (is_loop) {
                         cmd = "sudo bash ./wipe-device.sh " + d.node + " " + method + " > /tmp/sentinel-wipe.log 2>&1";
@@ -449,7 +445,6 @@ int main() {
 
                     int rc = run_system(cmd);
 
-                    // Post-wipe verification
                     run_system(std::string("sudo partprobe ") + d.node + " >/dev/null 2>&1 || true");
                     std::string wipefs_out = run_cmd_capture(std::string("sudo wipefs ") + d.node + " 2>/dev/null || true");
 
@@ -457,7 +452,6 @@ int main() {
                     bool still_exists = false;
                     for (auto &x : refreshed) if (x.node == d.node) { still_exists = true; break; }
 
-                    // Show result
                     std::string details = "Log: /tmp/sentinel-wipe.log\n";
                     if (!wipefs_out.empty()) {
                         details += "Wipefs output:\n" + wipefs_out;
@@ -476,14 +470,13 @@ int main() {
                     
                     wgetch(mainwin);
 
-                    // Refresh disk list
                     disks = list_disks();
                     if (idx >= (int)disks.size()) idx = (int)disks.size()-1;
                 }
             }
         }
 
-        else if (stage == 2) {  // Android device wipe
+        else if (stage == 2) {
             std::string mode = "fastboot";
             std::string detected_device = "";
 
@@ -504,7 +497,6 @@ int main() {
                     std::string detect_cmd = "bash /opt/sentinel/scripts/detect-android.sh " + mode + " > /tmp/sentinel-detect.log 2>&1";
                     system(detect_cmd.c_str());
 
-                    // Read detection result
                     std::ifstream log("/tmp/sentinel-detect.log");
                     std::string serial, line;
                     if (log.is_open()) {

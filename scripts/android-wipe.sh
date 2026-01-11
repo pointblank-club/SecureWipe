@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-MODE="${1:-fastboot}"  # fastboot or adb
+MODE="${1:-fastboot}"
 DEV="${2:-}"
 
 LOG="/tmp/sentinel-android-$(date +%s).log"
