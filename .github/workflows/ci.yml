@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main", "dev" ]
+  pull_request:
+    branches: [ "main", "dev" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libncurses-dev libncursesw5-dev
+
+    - name: Build
+      run: make
+
+    - name: Smoke Test (Verify Binary)
+      run: |
+        if [ -x ./bin/sentinel ]; then
+          echo "Binary successfully built at ./bin/sentinel"
+        else
+          echo "Binary not found!"
+          exit 1
+        fi
+
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libncurses-dev libncursesw5-dev clang-tidy bear
+
+    - name: Generate compile_commands.json
+      run: bear -- make
+
+    - name: Run clang-tidy
+      run: |
+        # Run clang-tidy on all C++ source files
+        # We exclude build directories by finding only in src
+        # Using -p . to point to compile_commands.json in root
+        find src -name "*.cpp" -exec clang-tidy -p . {} +

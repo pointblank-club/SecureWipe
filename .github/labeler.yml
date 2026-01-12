@@ -1,0 +1,17 @@
+C++:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'src/**/*.cpp'
+      - 'include/**/*.hpp'
+      - 'Makefile'
+
+CI:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '.github/**/*'
+
+Scripts:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'scripts/**/*'
+      - '*.sh'
