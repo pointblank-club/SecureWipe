@@ -136,4 +136,4 @@ These certificates act as tamper-proof audit records, providing verifiable proof
 
  - All data will be permanently erased. Back up any critical data before proceeding. 
  - Use SecureWipe only on devices you own or are authorized to wipe.
- - Some older HDDs may not support ATA Secure Erase commands.
+ - Some older HDDs may not support ATA Secure Erase commands. Guttman method will be employed which may take some time.
