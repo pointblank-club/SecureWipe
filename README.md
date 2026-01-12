@@ -1,16 +1,12 @@
 
-#  Void: Cross-Platform Secure Data Wiping Solution
-
- **Official Website:** [https://devpoliooo.vercel.app/](https://devpoliooo.vercel.app/)
-
----
+#  SecureWipe: Cross-Platform Secure Data Wiping Solution
 
 ##  Overview
-Void is an open-source, cross-platform data wiping system focused on verifiable and standards-compliant data erasure across a wide range of storage devices.
+SecureWipe is an open-source, cross-platform data wiping system focused on verifiable and standards-compliant data erasure across a wide range of storage devices.
 
 It supports HDDs, SSDs, NVMe drives, removable USB storage, and Android devices, and is designed to perform complete, irreversible data destruction, not just filesystem-level deletion.
 
-Void runs on a 64-bit Tiny Core Linux base to keep the environment minimal, fast, and hardware-tolerant, making it usable on both modern systems and older machines without relying on vendor-specific tooling.
+SecureWipe runs on a 64-bit Tiny Core Linux base to keep the environment minimal, fast, and hardware-tolerant, making it usable on both modern systems and older machines without relying on vendor-specific tooling.
 
 The project follows NIST SP 800-88 data sanitization guidelines and produces cryptographically verifiable wipe records that can be audited or validated later. These records support reproducible erasure workflows, compliance verification, and responsible device reuse or disposal.
 
@@ -38,9 +34,9 @@ The project follows NIST SP 800-88 data sanitization guidelines and produces cry
 
 #### Step 1 — Download Files
 
-1. Visit the [official Void website](https://devpoliooo.vercel.app/).
+1. Visit the [official SecureWipe website](https://devpoliooo.vercel.app/).
 
-2. Download the latest **Void ISO** file.
+2. Download the latest **SecureWipe ISO** file.
 
 #### Step 2 — Create a Bootable USB with Rufus
 
@@ -52,23 +48,23 @@ The project follows NIST SP 800-88 data sanitization guidelines and produces cry
 
 - **Device:** Select your USB drive
 
-- **Boot selection:** Choose the downloaded `Void.iso`
+- **Boot selection:** Choose the downloaded `SecureWipe.iso`
 
 - **Partition scheme:** Choose `MBR` (Legacy BIOS) or `GPT` (UEFI) based on your device.
 
 4. Click **Start** and wait for Rufus to finish creating the bootable USB.
 
-#### Step 3 — Boot into Void
+#### Step 3 — Boot into SecureWipe
 
 1. Insert the USB drive into the target computer.
 
 2. Restart and open the boot menu (`F12`, `Esc`, or `Del` depending on the system).
 
-3. Select your USB device to boot into **Void**.
+3. Select your USB device to boot into **SecureWipe**.
 
 #### Step 4 — Start Wiping
 
-Once the Void interface loads, select an option:
+Once the SecureWipe interface loads, select an option:
 
 -  **Wipe Internal Disk (HDD/NVMe)**
 
@@ -77,7 +73,7 @@ Once the Void interface loads, select an option:
 -  **Wipe Android Devices**
 
 Follow the on-screen prompts.
-After completion, Void automatically generates a **wipe certificate** which will be stored on the Pendrive.
+After completion, SecureWipe automatically generates a **wipe certificate** which will be stored on the Pendrive.
 
 ---
 
@@ -85,7 +81,7 @@ After completion, Void automatically generates a **wipe certificate** which will
 
 #### Option 1 — Using the ISO File
 
-1. Download the `Void.iso` file.
+1. Download the `SecureWipe.iso` file.
 
 2. Identify your USB drive (e.g., `/dev/sdb`).
 
@@ -93,7 +89,7 @@ After completion, Void automatically generates a **wipe certificate** which will
 
 ```bash
 
-sudo dd if=Void.iso of=/dev/sdX bs=4M status=progress conv=fsync
+sudo dd if=SecureWipe.iso of=/dev/sdX bs=4M status=progress conv=fsync
 ```
 
 Replace /dev/sdX with your actual USB device path (not a partition like /dev/sdb1).
@@ -103,18 +99,18 @@ Reboot your system and select the USB device from the boot menu.
 
 ### Option 2 — Using the .deb Package
 
-Download the void.deb package from the official website.
+Download the securewipe.deb package from the official website.
 Install it using:
 
 ```bash
-sudo dpkg -i void.deb
+sudo dpkg -i securewipe.deb
 sudo apt-get install -f
 ```
 
-Launch Void with:
+Launch SecureWipe with:
 
 ```bash
-void
+securewipe
 ```
 
 Follow the interface to securely wipe supported devices.
@@ -127,7 +123,7 @@ Follow the interface to securely wipe supported devices.
 
 ### Wipe Certificates
 
-After each successful operation, Void creates a digital wipe certificate that includes:
+After each successful operation, SecureWipe creates a digital wipe certificate that includes:
 - Device name and serial number
 - Wipe timestamp
 - Wipe method (ATA, NVMe, ADB, or dd)
@@ -139,5 +135,5 @@ These certificates act as tamper-proof audit records, providing verifiable proof
 ### !!! Important Notes
 
  - All data will be permanently erased. Back up any critical data before proceeding. 
- - Use Void only on devices you own or are authorized to wipe.
+ - Use SecureWipe only on devices you own or are authorized to wipe.
  - Some older HDDs may not support ATA Secure Erase commands.
