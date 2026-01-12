@@ -27,9 +27,13 @@ void draw_disks(WINDOW *win, int highlight,
                 type = "[NVMe]";
             if (disks[i].node.find("loop") != std::string::npos)
                 type = "[Loop]";
+            if (disks[i].node.find("/dev/vd") == 0)
+                type = "[VirtIO]";
 
             mvwprintw(win, start_y + i * 3, 4,
-                      "> %s %s", disks[i].node.c_str(), type.c_str());
+                      "%s %s",
+                      disks[i].node.c_str(),
+                      type.c_str());
 
             mvwprintw(win, start_y + i * 3 + 1, 6,
                       "Model: %s | Size: %s",
@@ -40,9 +44,6 @@ void draw_disks(WINDOW *win, int highlight,
                 wattroff(win, COLOR_PAIR(COLOR_HIGHLIGHT) | A_REVERSE | A_BOLD);
         }
     }
-
-    mvwprintw(win, getmaxy(win) - 2, 2,
-              "UP/DOWN: Navigate  ENTER: Wipe  R: Refresh  B: Back");
 
     wrefresh(win);
 }

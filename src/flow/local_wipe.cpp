@@ -8,11 +8,9 @@
 #include "wipe/wipe_common.h"
 #include "flow/stage.h"
 #include "flow/wipe_type.h"
-#include "flow/local_wipe.h"
 
 namespace
 {
-
     bool confirm_wipe(WINDOW *win, Disk &d, int &loopIndex)
     {
         bool is_loop = (d.node.rfind("/dev/loop", 0) == 0);
@@ -59,16 +57,22 @@ namespace
     }
 
     SelectedWipe choose_wipe_method(const Disk &d)
-    {
-        if (d.node.find("nvme") != std::string::npos)
-            return SelectedWipe::CRYPTO;
+{
+    if (d.node.find("nvme") != std::string::npos)
+        return SelectedWipe::CRYPTO;
 
-        if (d.model.find("ATA") != std::string::npos ||
-            d.node.find("/dev/sd") == 0)
-            return SelectedWipe::ATA;
-
+    if (d.node.find("/dev/vd") == 0)
         return SelectedWipe::GUTTMANN;
-    }
+
+    if (d.node.find("/dev/loop") == 0)
+        return SelectedWipe::GUTTMANN;
+
+    if (d.node.find("/dev/sd") == 0)
+        return SelectedWipe::ATA;
+
+    return SelectedWipe::GUTTMANN;
+}
+
 
     WipeResult execute_wipe(WINDOW *win,
                             const Disk &d,
@@ -89,12 +93,14 @@ namespace
 
         return wipe_crypto_erase(d.node);
     }
-
-} 
-
+}
 
 Stage run_local_wipe(WINDOW *mainwin, WINDOW *footer)
 {
+    keypad(mainwin, TRUE);
+    keypad(footer, TRUE);
+    noecho();
+
     auto disks = list_disks();
     int idx = 0;
     static int loopIndex = 0;
@@ -129,9 +135,8 @@ Stage run_local_wipe(WINDOW *mainwin, WINDOW *footer)
         {
             return Stage::EXIT;
         }
-        else if (ch == 10 || ch == KEY_ENTER)
+        else if (ch == '\n' || ch == KEY_ENTER)
         {
-
             if (disks.empty())
                 continue;
 

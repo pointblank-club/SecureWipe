@@ -1,14 +1,14 @@
-CXX       := g++
-CXXFLAGS  := -Wall -Wextra -O2 -std=c++20
-INCLUDES  := -Iinclude
-LDFLAGS   :=
-LDLIBS    := -lncurses
+CXX := g++
+CXXFLAGS := -O2 -std=c++20 -static -fno-plt
+INCLUDES := -Iinclude
 
-SRC_DIR   := src
+LDLIBS := -lpanelw -lmenuw -lformw -lncursesw -ltinfo
+
+SRC_DIR := src
 BUILD_DIR := build
-BIN_DIR   := bin
+BIN_DIR := bin
 
-TARGET    := $(BIN_DIR)/sentinel
+TARGET := $(BIN_DIR)/sentinel
 
 SRCS := \
 	$(wildcard $(SRC_DIR)/*.cpp) \
@@ -24,7 +24,9 @@ all: $(TARGET)
 
 $(TARGET): $(OBJS)
 	@mkdir -p $(BIN_DIR)
-	$(CXX) $(OBJS) -o $@ $(LDFLAGS) $(LDLIBS)
+	$(CXX) $(CXXFLAGS) $(OBJS) \
+		-Wl,--start-group $(LDLIBS) -Wl,--end-group \
+		-o $@
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
 	@mkdir -p $(dir $@)
@@ -33,7 +35,4 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
 clean:
 	rm -rf $(BUILD_DIR) $(BIN_DIR)
 
-run: all
-	sudo ./$(TARGET)
-
-.PHONY: all clean run
+.PHONY: all clean
