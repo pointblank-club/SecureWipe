@@ -1,6 +1,10 @@
 
 #  SecureWipe: Cross-Platform Secure Data Wiping Solution
 
+[![C++](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://isocpp.org/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![CI](https://github.com/pointblank-club/SecureWipe/actions/workflows/ci.yml/badge.svg)](https://github.com/pointblank-club/SecureWipe/actions/workflows/ci.yml)
+
 ##  Overview
 SecureWipe is an open-source, cross-platform data wiping system focused on verifiable and standards-compliant data erasure across a wide range of storage devices.
 
